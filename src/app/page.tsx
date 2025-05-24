@@ -34,6 +34,7 @@ export default function HapticPage() {
   
   const [micError, setMicError] = useState<string | null>(null);
   const [isMicSetupComplete, setIsMicSetupComplete] = useState<boolean>(false);
+  const [initialMicStarted, setInitialMicStarted] = useState<boolean>(false); // New state for one-time auto-start
 
   const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
@@ -120,7 +121,7 @@ export default function HapticPage() {
     if (!speechRecognitionRef.current) {
         speechRecognitionRef.current = new SpeechRecognitionAPI();
         const recognition = speechRecognitionRef.current!;
-        recognition.continuous = true;
+        recognition.continuous = true; // Keep true for interim results
         recognition.interimResults = true;
         recognition.lang = 'rw-RW'; 
 
@@ -141,8 +142,13 @@ export default function HapticPage() {
             }
           }
           setInterimTranscript(interim);
+
           if (final.trim()) {
-            setResponseOptions([]); 
+            setInterimTranscript(''); // Clear interim once final is processed
+            if (speechRecognitionRef.current) {
+                // Stop listening to allow response selection. onend will set isListening to false.
+                speechRecognitionRef.current.stop();
+            }
             if (window.speechSynthesis.speaking) {
               window.speechSynthesis.cancel();
               setIsSpeakingTTS(false);
@@ -172,7 +178,6 @@ export default function HapticPage() {
         recognition.onend = () => {
           setIsListening(false);
           setIsPreparingMic(false);
-          // If it stopped unexpectedly, isListening will be false.
         };
         setIsMicSetupComplete(true);
     }
@@ -183,20 +188,27 @@ export default function HapticPage() {
         speechRecognitionRef.current.onresult = null;
         speechRecognitionRef.current.onerror = null;
         speechRecognitionRef.current.onend = null;
-        speechRecognitionRef.current.stop();
+        // Ensure stop is called to release resources and prevent memory leaks
+        try {
+            speechRecognitionRef.current.stop();
+        } catch (e) {
+            // Ignore errors if already stopped or in an invalid state
+        }
       }
       if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [processTranscription, toast]);
+  }, [processTranscription, toast]); // isListening removed as it's managed internally by onstart/onend
 
 
+  // Effect for initial microphone auto-start
   useEffect(() => {
-    if (isMicSetupComplete && speechRecognitionRef.current && !isListening && !isPreparingMic && !micError) {
+    if (isMicSetupComplete && speechRecognitionRef.current && !isListening && !isPreparingMic && !micError && !initialMicStarted) {
       toggleListening();
+      setInitialMicStarted(true); // Mark that initial auto-start has occurred
     }
-  }, [isMicSetupComplete, isListening, isPreparingMic, micError, toggleListening]);
+  }, [isMicSetupComplete, isListening, isPreparingMic, micError, initialMicStarted, toggleListening]);
 
   // Effect for Web Audio API based voice visualization
   useEffect(() => {
@@ -238,7 +250,7 @@ export default function HapticPage() {
         audioContextRef.current = new AudioContextAPI();
         
         analyserRef.current = audioContextRef.current.createAnalyser();
-        analyserRef.current.fftSize = 256; // 128 frequency bins
+        analyserRef.current.fftSize = 256; 
         
         mediaStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current);
         mediaStreamSourceRef.current.connect(analyserRef.current);
@@ -249,8 +261,6 @@ export default function HapticPage() {
 
       } catch (err) {
         console.warn('Could not initialize audio visualizer:', err);
-        // Not setting micError here as SpeechRecognition handles primary mic errors.
-        // This is a non-critical feature failing.
       }
     };
 
@@ -264,7 +274,6 @@ export default function HapticPage() {
         mediaStreamSourceRef.current = null;
       }
       if (analyserRef.current) {
-        // analyserRef.current.disconnect(); // Not typically needed if not connected to output
         analyserRef.current = null;
       }
       if (microphoneStreamRef.current) {
@@ -313,6 +322,10 @@ export default function HapticPage() {
         }
         return prev;
       });
+      // Optionally, restart listening after TTS:
+      // if (!isListening && speechRecognitionRef.current && !isPreparingMic) {
+      //   toggleListening();
+      // }
     };
     utterance.onerror = (event) => {
       console.error('Speech synthesis error:', event);
@@ -361,7 +374,13 @@ export default function HapticPage() {
           </div>
         )}
 
-        {!isListening && !isPreparingMic && <div className="h-[52px]" aria-hidden="true"></div>}
+        {!isListening && !isPreparingMic && interimTranscript && ( // Show interim even if not actively listening but processing final
+           <div className="flex flex-col items-center space-y-1">
+             <VoiceActivityIndicator audioData={[0,0,0,0,0]} /> 
+             <p className="italic text-muted-foreground">{interimTranscript}</p>
+           </div>
+        )}
+        {!isListening && !isPreparingMic && !interimTranscript && <div className="h-[52px]" aria-hidden="true"></div>}
       </div>
 
       <footer className="px-4 md:px-6 pb-4 md:pb-6 space-y-4 border-t border-border pt-4 bg-background sticky bottom-0">
@@ -376,7 +395,7 @@ export default function HapticPage() {
             isListening={isListening}
             isPreparing={isPreparingMic}
             onClick={toggleListening}
-            disabled={!isMicSetupComplete || (micError !== null && !speechRecognitionRef.current) || isProcessingAI}
+            disabled={!isMicSetupComplete || (micError !== null && !speechRecognitionRef.current) || isProcessingAI || isSpeakingTTS}
           />
         </div>
       </footer>
