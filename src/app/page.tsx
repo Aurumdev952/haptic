@@ -65,6 +65,87 @@ export default function HapticPage() {
     }
   }, []);
 
+  // Renamed and refined toggleListening to handle starting microphone more centrally
+  const attemptStartListening = useCallback(() => {
+    if (typeof window === 'undefined' || !speechRecognitionRef.current) {
+      const errorMsg = "Speech recognition is not available or not initialized.";
+      setMicError(errorMsg);
+      toast({ variant: 'destructive', title: 'Error', description: errorMsg });
+      setIsPreparingMic(false); // Ensure preparing is false if we can't even attempt
+      setIsListening(false);
+      userClickedStopRef.current = true; // Prevent auto-restart loops
+      return;
+    }
+
+    // If already listening or preparing, do nothing
+    if (isListening || isPreparingMic) {
+      console.log("AttemptStartListening: Already listening or preparing, skipping.");
+      return;
+    }
+
+    clearPreparingMicTimeout();
+    userClickedStopRef.current = false; 
+    setMicError(null); 
+    setIsPreparingMic(true);
+    console.log("AttemptStartListening: Set isPreparingMic = true");
+
+    preparingTimeoutIdRef.current = setTimeout(() => {
+      const errorMsg = "Microphone preparation timed out. Please check permissions or ensure the microphone is working. Try refreshing the page.";
+      console.warn(errorMsg);
+      setMicError(errorMsg);
+      toast({ variant: 'destructive', title: 'Microphone Timeout', description: errorMsg });
+      setIsPreparingMic(false);
+      setIsListening(false);
+      userClickedStopRef.current = true; 
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop();
+        } catch (e) {
+          console.warn("Error stopping recognition on timeout:", e);
+        }
+      }
+    }, PREPARING_TIMEOUT_DURATION);
+
+    try {
+      console.log("AttemptStartListening: Calling speechRecognitionRef.current.start()");
+      speechRecognitionRef.current.start();
+    } catch (error: any) {
+      console.error("Error starting recognition in attemptStartListening:", error);
+      clearPreparingMicTimeout();
+      const errorMsg = `Failed to start microphone: ${error.message || 'Check permissions and hardware.'}`;
+      setMicError(errorMsg);
+      toast({ variant: 'destructive', title: 'Microphone Error', description: errorMsg });
+      setIsPreparingMic(false);
+      setIsListening(false);
+      userClickedStopRef.current = true; 
+    }
+  }, [isListening, isPreparingMic, toast, clearPreparingMicTimeout]);
+
+  const stopListening = useCallback(() => {
+    if (typeof window === 'undefined' || !speechRecognitionRef.current) return;
+    
+    userClickedStopRef.current = true;
+    clearPreparingMicTimeout(); // Clear if it was in preparing phase
+    if (speechRecognitionRef.current) {
+        try {
+            speechRecognitionRef.current.stop();
+            console.log("StopListening: Called speechRecognitionRef.current.stop()");
+        } catch (e) {
+            console.warn("Error stopping recognition in stopListening:", e);
+        }
+    }
+    // onend will handle setting isListening and isPreparingMic to false
+  }, [clearPreparingMicTimeout]);
+
+  const handleMicButtonClick = useCallback(() => {
+    if (isListening || isPreparingMic) {
+      stopListening();
+    } else {
+      attemptStartListening();
+    }
+  }, [isListening, isPreparingMic, stopListening, attemptStartListening]);
+
+
   const processTranscription = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
 
@@ -87,63 +168,13 @@ export default function HapticPage() {
       setConversation(prev => prev.map(turn => turn.id === newTurnId ? { ...turn, isProcessingAI: false, aiResponse: "[Error fetching responses]" } : turn));
     } finally {
       setIsProcessingAI(false);
-      if (speechRecognitionRef.current && !isListening && !isPreparingMic && !userClickedStopRef.current && !micError) {
-        try {
-            speechRecognitionRef.current.start();
-        } catch (e) {
-            console.warn("Error trying to restart mic in processTranscription finally:", e);
-        }
+      // If not manually stopped and no critical error, try to restart listening
+      if (speechRecognitionRef.current && !userClickedStopRef.current && !micError && !isListening && !isPreparingMic) {
+        console.log("ProcessTranscription: Attempting to restart listening.");
+        attemptStartListening();
       }
     }
-  }, [toast, isListening, isPreparingMic, micError]); 
-
-  const toggleListening = useCallback(() => {
-    clearPreparingMicTimeout();
-    if (!speechRecognitionRef.current) {
-      setMicError("Speech recognition is not available.");
-      toast({ variant: 'destructive', title: 'Error', description: 'Speech recognition not available.' });
-      return;
-    }
-
-    if (isListening) {
-      userClickedStopRef.current = true; 
-      speechRecognitionRef.current.stop();
-    } else {
-      userClickedStopRef.current = false; 
-      setMicError(null); 
-      setIsPreparingMic(true);
-
-      preparingTimeoutIdRef.current = setTimeout(() => {
-        const errorMsg = "Microphone preparation timed out. Please check permissions or try again.";
-        console.warn(errorMsg);
-        setMicError(errorMsg);
-        toast({ variant: 'destructive', title: 'Microphone Timeout', description: errorMsg });
-        setIsPreparingMic(false);
-        setIsListening(false);
-        userClickedStopRef.current = true; 
-        if (speechRecognitionRef.current) {
-          try {
-            speechRecognitionRef.current.stop();
-          } catch (e) {
-            console.warn("Error stopping recognition on timeout:", e);
-          }
-        }
-      }, PREPARING_TIMEOUT_DURATION);
-
-      try {
-        speechRecognitionRef.current.start();
-      } catch (error) {
-        console.error("Error starting recognition:", error);
-        clearPreparingMicTimeout();
-        const errorMsg = "Failed to start microphone. Please check permissions and hardware.";
-        setMicError(errorMsg);
-        toast({ variant: 'destructive', title: 'Microphone Error', description: errorMsg });
-        setIsPreparingMic(false);
-        setIsListening(false);
-        userClickedStopRef.current = true; 
-      }
-    }
-  }, [isListening, toast, clearPreparingMicTimeout]); 
+  }, [toast, micError, attemptStartListening, isListening, isPreparingMic]); 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -164,6 +195,7 @@ export default function HapticPage() {
         recognition.lang = 'rw-RW'; 
 
         recognition.onstart = () => {
+          console.log("Recognition.onstart fired");
           clearPreparingMicTimeout();
           setIsListening(true);
           setIsPreparingMic(false);
@@ -171,6 +203,7 @@ export default function HapticPage() {
         };
 
         recognition.onresult = (event: any) => {
+          console.log("Recognition.onresult fired");
           let interim = '';
           let final = '';
           for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -184,7 +217,7 @@ export default function HapticPage() {
 
           if (final.trim()) {
             if (window.speechSynthesis && window.speechSynthesis.speaking) {
-              window.speechSynthesis.cancel();
+              window.speechSynthesis.cancel(); // Stop TTS if user speaks
               setIsSpeakingTTS(false);
             }
             setInterimTranscript(''); 
@@ -196,76 +229,84 @@ export default function HapticPage() {
           clearPreparingMicTimeout();
           console.error('Speech recognition error:', event.error);
           let errorMsg = 'An unknown microphone error occurred.';
+          let criticalError = false;
           if (event.error === 'no-speech') {
-            errorMsg = 'No speech was detected for a while.'; 
+            errorMsg = 'No speech was detected. Please ensure your microphone is working and try speaking clearly.'; 
+            // Not necessarily critical, might auto-restart if desired.
           } else if (event.error === 'audio-capture') {
-            errorMsg = 'Audio capture failed. Is a microphone connected and enabled?';
-            userClickedStopRef.current = true; 
+            errorMsg = 'Audio capture failed. Is a microphone connected and enabled? Please check system settings.';
+            criticalError = true; 
           } else if (event.error === 'not-allowed') {
-            errorMsg = 'Microphone access was denied. Please enable microphone permissions in your browser settings.';
-            userClickedStopRef.current = true; 
+            errorMsg = 'Microphone access was denied. Please enable microphone permissions in your browser settings for this site.';
+            criticalError = true; 
           } else if (event.error === 'network') {
-            errorMsg = 'A network error occurred with the speech recognition service.';
+            errorMsg = 'A network error occurred with the speech recognition service. Check your internet connection.';
+            // Not necessarily critical for userClickedStopRef, service might recover.
           } else if (event.error === 'language-not-supported') {
-            errorMsg = 'The selected language (Kinyarwanda) is not supported by your browser/OS speech recognition.';
-            userClickedStopRef.current = true;
+            errorMsg = 'The selected language (Kinyarwanda) is not supported by your browser/OS speech recognition service.';
+            criticalError = true;
+          } else if (event.error === 'service-not-allowed' || event.error === 'aborted') {
+             errorMsg = `Speech recognition service error: ${event.error}. It might be temporary.`;
           }
+          
           setMicError(errorMsg);
           toast({ variant: 'destructive', title: 'Microphone Error', description: errorMsg });
           setIsListening(false);
           setIsPreparingMic(false);
+          if (criticalError) {
+            userClickedStopRef.current = true; // Prevent auto-restarts for critical, user-fixable errors
+          }
         };
 
         recognition.onend = () => {
+          console.log("Recognition.onend fired. userClickedStopRef:", userClickedStopRef.current, "micError:", micError);
           clearPreparingMicTimeout();
           setIsListening(false);
-          setIsPreparingMic(false);
-          if (!userClickedStopRef.current && speechRecognitionRef.current) {
-            const currentMicError = micError; // Check the micError state at the time of onend
-            if (currentMicError && (currentMicError.includes("denied") || currentMicError.includes("capture failed") || currentMicError.includes("not supported"))) {
-                // Don't try to restart if fundamental mic issue
-            } else {
-                try {
-                    console.log("Attempting to restart recognition in onend");
-                    speechRecognitionRef.current.start(); 
-                    // Note: If this start() also needs a "preparing" state, it's not set here.
-                    // However, onstart should still fire and set isListening true / isPreparingMic false.
-                    // If this start fails silently without onstart, it will just remain not listening.
-                } catch (e) {
-                    console.error("Error restarting recognition in onend:", e);
-                    userClickedStopRef.current = true;
-                }
-            }
+          setIsPreparingMic(false); 
+          
+          if (!userClickedStopRef.current && !micError) { // Only restart if no manual stop and no persistent error
+            console.log("Recognition.onend: Conditions met, attempting to restart listening.");
+            attemptStartListening();
+          } else {
+            console.log("Recognition.onend: Conditions NOT met for restart.");
           }
         };
         setIsMicSetupComplete(true);
     }
     
+    // Cleanup function
     return () => {
       clearPreparingMicTimeout();
       if (speechRecognitionRef.current) {
-        userClickedStopRef.current = true; 
-        speechRecognitionRef.current.onstart = null;
-        speechRecognitionRef.current.onresult = null;
-        speechRecognitionRef.current.onerror = null;
-        speechRecognitionRef.current.onend = null;
+        // userClickedStopRef.current = true; // Ensure it doesn't try to restart after component unmounts
+        const rec = speechRecognitionRef.current;
+        rec.onstart = null;
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null; // Crucial to remove onend before stopping, to prevent restart logic during unmount
         try {
-            speechRecognitionRef.current.stop();
-        } catch (e) {}
+            rec.stop();
+            console.log("Cleaned up speech recognition instance on unmount.");
+        } catch (e) {
+            console.warn("Error stopping recognition on unmount:", e);
+        }
+        // speechRecognitionRef.current = null; // Don't nullify if other parts might access it immediately before full unmount
       }
       if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [processTranscription, toast, micError, clearPreparingMicTimeout]);
+  }, [processTranscription, toast, micError, clearPreparingMicTimeout, attemptStartListening]);
 
 
   useEffect(() => {
-    if (isMicSetupComplete && speechRecognitionRef.current && !isListening && !isPreparingMic && !micError && !userClickedStopRef.current) {
-      toggleListening(); 
+    if (isMicSetupComplete && !isListening && !isPreparingMic && !micError && !userClickedStopRef.current) {
+      console.log("Initial mic start useEffect: conditions met, attempting to start listening.");
+      attemptStartListening(); 
     }
-  }, [isMicSetupComplete, isListening, isPreparingMic, micError, toggleListening]);
+  }, [isMicSetupComplete, isListening, isPreparingMic, micError, userClickedStopRef, attemptStartListening]); // Added userClickedStopRef
 
+  // Audio Visualizer Effect
   useEffect(() => {
     const NUM_BARS = 5;
     const processAudioFrame = () => {
@@ -289,19 +330,17 @@ export default function HapticPage() {
     };
 
     const initAudioVisualizer = async () => {
-      if (typeof window === 'undefined' || micError || audioContextRef.current || !isListening) return;
+      if (typeof window === 'undefined' || audioContextRef.current || !isListening) return; // Don't init if context exists or not listening
+      if (micError && (micError.includes("denied") || micError.includes("capture failed"))) return; // Don't init if critical mic error
+
       try {
-        // Only request if not already available or if context is stopped/closed
         if (!microphoneStreamRef.current || microphoneStreamRef.current.getAudioTracks().every(t => t.readyState === 'ended')) {
           microphoneStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
         const AudioContextAPI = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextAPI) { return; }
 
-        if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-            audioContextRef.current = new AudioContextAPI();
-        }
-        // Ensure context is running
+        audioContextRef.current = new AudioContextAPI();
         if (audioContextRef.current.state === 'suspended') {
             await audioContextRef.current.resume();
         }
@@ -312,68 +351,64 @@ export default function HapticPage() {
         mediaStreamSourceRef.current.connect(analyserRef.current);
         audioDataArrayRef.current = new Uint8Array(analyserRef.current.frequencyBinCount);
         animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
+        console.log("Audio visualizer initialized");
       } catch (err) { console.warn('Could not initialize audio visualizer:', err); }
     };
 
     const cleanupAudioVisualizer = () => {
       if (animationFrameIdRef.current) cancelAnimationFrame(animationFrameIdRef.current);
       animationFrameIdRef.current = null;
-      if (mediaStreamSourceRef.current) mediaStreamSourceRef.current.disconnect();
-      mediaStreamSourceRef.current = null; // Allow it to be recreated if needed
+      
+      if (mediaStreamSourceRef.current) {
+        mediaStreamSourceRef.current.disconnect();
+        mediaStreamSourceRef.current = null;
+      }
       analyserRef.current = null;
-      // Do not stop microphoneStreamRef tracks here if SpeechRecognition is using it or if we want to reuse it.
-      // Let's assume SpeechRecognition manages its own stream. The visualizer stream might need separate management if it's distinct.
-      // For now, we are creating a new stream for the visualizer. So it's okay to stop its tracks.
+      
       if (microphoneStreamRef.current) {
         microphoneStreamRef.current.getTracks().forEach(track => track.stop());
         microphoneStreamRef.current = null;
+        console.log("Visualizer microphone stream stopped.");
       }
 
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(e => console.warn("Error closing visualizer audio context:", e));
-        // audioContextRef.current = null; // Do not nullify if we intend to resume/reuse
+        audioContextRef.current.close().then(() => {
+            console.log("Visualizer audio context closed.");
+            audioContextRef.current = null; 
+        }).catch(e => console.warn("Error closing visualizer audio context:", e));
+      } else {
+        audioContextRef.current = null; // Ensure it's null if already closed or never opened
       }
-      // audioDataArrayRef.current = null; // Keep if reusing
       setVoiceActivityData([0,0,0,0,0]);
     };
 
     if (isListening && !isPreparingMic) { initAudioVisualizer(); } 
     else { cleanupAudioVisualizer(); }
     
-    // Stricter cleanup on unmount
-    return () => {
+    return () => { // Stricter cleanup on unmount
         cleanupAudioVisualizer();
-        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-            audioContextRef.current.close().catch(e => console.warn("Error closing visualizer audio context on unmount:", e));
-        }
-        audioContextRef.current = null; // Ensure it's fully cleaned for next mount
     };
-  }, [isListening, isPreparingMic, micError]); // Added micError to re-evaluate visualizer
+  // eslint-disable-next-line react-hooks/exhaustive-deps 
+  }, [isListening, isPreparingMic, micError]); 
 
 
   const handleSelectResponse = (option: string) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
-
     setInterimTranscript(''); 
     
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-    }
+    if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); }
 
     const utterance = new SpeechSynthesisUtterance(option);
     utterance.lang = 'rw-RW'; 
     
     utterance.onstart = () => {
       setIsSpeakingTTS(true);
-      // If recognition is active, stop it during TTS to prevent feedback loops or unwanted transcriptions.
-      if (speechRecognitionRef.current && isListening) {
-        console.log("Stopping recognition during TTS");
-        speechRecognitionRef.current.stop(); // onend will handle restart if appropriate
-      }
+      // If recognition is active, stop it during TTS
+      // No, let's allow user to speak over TTS, onresult handles cancelling TTS
     };
     utterance.onend = () => {
       setIsSpeakingTTS(false);
-      setConversation(prev => {
+      setConversation(prev => { // Update conversation with AI response
         const lastTurnIndex = prev.length - 1;
         if (lastTurnIndex >= 0 && prev[lastTurnIndex].userText && !prev[lastTurnIndex].aiResponse) { 
           const updatedConversation = [...prev];
@@ -382,31 +417,20 @@ export default function HapticPage() {
         }
         return prev;
       });
-      // Attempt to restart recognition if it was stopped for TTS and user hasn't manually stopped it.
-      if (speechRecognitionRef.current && !isListening && !isPreparingMic && !userClickedStopRef.current && !micError) {
-        try {
-            console.log("Attempting to restart mic in TTS onend");
-            speechRecognitionRef.current.start();
-        } catch (e) {
-            console.warn("Error trying to restart mic in TTS onend:", e);
-        }
+      // If not manually stopped and no critical error, try to restart listening
+      if (speechRecognitionRef.current && !userClickedStopRef.current && !micError && !isListening && !isPreparingMic) {
+        console.log("TTS onend: Attempting to restart listening.");
+        attemptStartListening();
       }
     };
     utterance.onerror = (event) => {
       console.error('Speech synthesis error:', event);
-      toast({
-        variant: 'destructive',
-        title: 'TTS Error',
-        description: 'Could not speak the response.',
-      });
+      toast({ variant: 'destructive', title: 'TTS Error', description: 'Could not speak the response.'});
       setIsSpeakingTTS(false);
       // Also try to restart mic if TTS fails and it should be listening
-       if (speechRecognitionRef.current && !isListening && !isPreparingMic && !userClickedStopRef.current && !micError) {
-        try {
-            speechRecognitionRef.current.start();
-        } catch (e) {
-            console.warn("Error trying to restart mic after TTS error:", e);
-        }
+       if (speechRecognitionRef.current && !userClickedStopRef.current && !micError && !isListening && !isPreparingMic) {
+        console.log("TTS onerror: Attempting to restart listening.");
+        attemptStartListening();
       }
     };
     window.speechSynthesis.speak(utterance);
@@ -453,7 +477,10 @@ export default function HapticPage() {
              <p className="italic text-muted-foreground">{interimTranscript}</p>
            </div>
         )}
-        {!isListening && !isPreparingMic && !interimTranscript && <div className="h-[52px]" aria-hidden="true"></div>}
+        {/* Placeholder for consistent height when nothing is shown */}
+        {!isPreparingMic && !(isListening && !isPreparingMic) && !(!isListening && !isPreparingMic && interimTranscript) && 
+          <div className="h-[52px]" aria-hidden="true"></div>
+        }
       </div>
 
       <footer className="px-4 md:px-6 pb-4 md:pb-6 space-y-4 border-t border-border pt-4 bg-background sticky bottom-0">
@@ -461,18 +488,17 @@ export default function HapticPage() {
           options={responseOptions}
           isLoading={isProcessingAI}
           onSelect={handleSelectResponse}
-          disabled={isPreparingMic || responseOptions.length === 0 || isProcessingAI /* Removed isListening and isSpeakingTTS from disabled condition */}
+          disabled={isPreparingMic || responseOptions.length === 0 || isProcessingAI }
         />
         <div className="flex justify-center">
           <MicrophoneButton
             isListening={isListening}
             isPreparing={isPreparingMic}
-            onClick={toggleListening}
-            disabled={!isMicSetupComplete || (micError !== null && (micError.includes("denied") || micError.includes("not supported") || micError.includes("capture failed"))) || isProcessingAI }
+            onClick={handleMicButtonClick} // Changed to new handler
+            disabled={!isMicSetupComplete || (micError !== null && (micError.includes("denied") || micError.includes("not supported") || micError.includes("capture failed") || micError.includes("Audio capture failed"))) || isProcessingAI || isSpeakingTTS }
           />
         </div>
       </footer>
     </div>
   );
 }
-
