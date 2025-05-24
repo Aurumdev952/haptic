@@ -1,12 +1,18 @@
+
 import type { FC } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Send } from 'lucide-react';
 
+export interface ResponseOption {
+  text: string;
+  lang: string;
+}
+
 interface ResponseOptionsDisplayProps {
-  options: string[];
+  options: ResponseOption[];
   isLoading: boolean;
-  onSelect: (option: string) => void;
+  onSelect: (option: ResponseOption) => void;
   disabled: boolean;
 }
 
@@ -32,13 +38,13 @@ const ResponseOptionsDisplay: FC<ResponseOptionsDisplayProps> = ({ options, isLo
           key={index}
           variant="outline"
           size="lg"
-          className="h-auto min-h-16 py-3 text-sm sm:text-base whitespace-normal text-left justify-start bg-card hover:bg-accent hover:text-accent-foreground focus-visible:ring-accent shadow-sm border-accent border-opacity-50"
+          className="h-auto min-h-16 py-3 text-sm sm:text-base whitespace-normal text-left justify-start bg-card hover:bg-accent hover:text-accent-foreground focus-visible:ring-accent shadow-sm border-accent border-opacity-50 group"
           onClick={() => onSelect(option)}
           disabled={disabled}
-          aria-label={`Select response: ${option}`}
+          aria-label={`Select response: ${option.text}`}
         >
           <Send size={18} className="mr-2 flex-shrink-0 text-accent group-hover:text-accent-foreground" />
-          {option}
+          {option.text}
         </Button>
       ))}
     </div>

@@ -1,13 +1,13 @@
-// 'use server';
+
+'use server';
 /**
- * @fileOverview Generates three contextual response options to transcribed input using an LLM.
+ * @fileOverview Generates three contextual response options to transcribed input using an LLM,
+ * supporting both Kinyarwanda and Kiswahili.
  *
- * - generateResponseOptions - A function that generates response options.
+ * - generateResponseOptions - A function that generates response options with language tags.
  * - GenerateResponseOptionsInput - The input type for the generateResponseOptions function.
  * - GenerateResponseOptionsOutput - The return type for the generateResponseOptions function.
  */
-
-'use server';
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
@@ -15,17 +15,22 @@ import {z} from 'genkit';
 const GenerateResponseOptionsInputSchema = z.object({
   transcribedInput: z
     .string()
-    .describe('The transcribed input from the user in either Kiyarwanda or Kiswahili.'),
+    .describe('The transcribed input from the user in either Kinyarwanda or Kiswahili.'),
 });
 export type GenerateResponseOptionsInput = z.infer<
   typeof GenerateResponseOptionsInputSchema
 >;
 
+const ResponseOptionSchema = z.object({
+  text: z.string().describe('The text of the response option.'),
+  lang: z.string().describe('The BCP 47 language tag of the response option (e.g., "rw-RW", "sw-SW").'),
+});
+
 const GenerateResponseOptionsOutputSchema = z.object({
   responseOptions: z
-    .array(z.string())
+    .array(ResponseOptionSchema)
     .length(3)
-    .describe('Three contextual response options to the transcribed input.'),
+    .describe('Three contextual response options, each with its text and BCP 47 language tag.'),
 });
 export type GenerateResponseOptionsOutput = z.infer<
   typeof GenerateResponseOptionsOutputSchema
@@ -41,15 +46,34 @@ const prompt = ai.definePrompt({
   name: 'generateResponseOptionsPrompt',
   input: {schema: GenerateResponseOptionsInputSchema},
   output: {schema: GenerateResponseOptionsOutputSchema},
-  prompt: `You are an AI assistant designed to generate contextual response options. A user has provided the following transcribed input: {{{transcribedInput}}}. Generate three distinct response options that would be appropriate in the context of this input. The responses should be short, relevant, and helpful. Return as a JSON array of strings.
+  prompt: `You are an AI assistant fluent in Kinyarwanda and Kiswahili.
+The user has provided the following transcribed input: {{{transcribedInput}}}
 
-For example:
+1. First, determine if the transcribed input is primarily in Kinyarwanda or Kiswahili.
+2. Then, generate three distinct response options that are contextually appropriate.
+    * The response options should generally be in the same language as the identified input language.
+    * Each response option should be short, relevant, and helpful.
+3. For each response option, provide its text and its BCP 47 language tag.
+    * Use 'rw-RW' for Kinyarwanda.
+    * Use 'sw-SW' for Kiswahili (standard Swahili).
 
+Return the response as a JSON object matching the output schema.
+
+Example for Kinyarwanda input:
 {
   "responseOptions": [
-    "Response option 1",
-    "Response option 2",
-    "Response option 3"
+    { "text": "Yego, ndabyumva.", "lang": "rw-RW" },
+    { "text": "Oya, ntabwo mbyumva.", "lang": "rw-RW" },
+    { "text": "Ushobora gusubiramo?", "lang": "rw-RW" }
+  ]
+}
+
+Example for Kiswahili input:
+{
+  "responseOptions": [
+    { "text": "Ndiyo, naelewa.", "lang": "sw-SW" },
+    { "text": "Hapana, sielewi.", "lang": "sw-SW" },
+    { "text": "Unaweza kurudia?", "lang": "sw-SW" }
   ]
 }`,
 });

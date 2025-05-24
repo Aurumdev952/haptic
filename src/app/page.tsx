@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ConversationTurn } from '@/components/haptic/ConversationTurnCard';
 import ConversationView from '@/components/haptic/ConversationView';
-import ResponseOptionsDisplay from '@/components/haptic/ResponseOptionsDisplay';
+import ResponseOptionsDisplay, { type ResponseOption } from '@/components/haptic/ResponseOptionsDisplay';
 import MicrophoneButton from '@/components/haptic/MicrophoneButton';
 import VoiceActivityIndicator from '@/components/haptic/VoiceActivityIndicator';
 import { generateResponseOptions } from '@/ai/flows/generate-response-options';
@@ -36,7 +36,7 @@ const PREPARING_TIMEOUT_DURATION = 10000; // 10 seconds
 export default function HapticPage() {
   const [conversation, setConversation] = useState<ConversationTurn[]>([]);
   const [interimTranscript, setInterimTranscript] = useState<string>('');
-  const [responseOptions, setResponseOptions] = useState<string[]>([]);
+  const [responseOptions, setResponseOptions] = useState<ResponseOption[]>([]);
   
   const [isListening, setIsListening] = useState<boolean>(false);
   const [isPreparingMic, setIsPreparingMic] = useState<boolean>(false);
@@ -45,7 +45,7 @@ export default function HapticPage() {
   
   const [micError, setMicError] = useState<string | null>(null);
   const [isMicSetupComplete, setIsMicSetupComplete] = useState<boolean>(false);
-  const userClickedStop = useRef<boolean>(false); // Renamed from userClickedStopRef
+  const userClickedStop = useRef<boolean>(false);
 
   const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
@@ -74,7 +74,6 @@ export default function HapticPage() {
     }
   }, []);
 
-  // Forward declaration for attemptStartListening and processTranscription
   const attemptStartListeningRef = useRef<() => void>(() => {});
   const processTranscriptionRef = useRef<(transcript: string) => Promise<void>>(async () => {});
   const micErrorRef = useRef(micError);
@@ -136,7 +135,7 @@ export default function HapticPage() {
       setIsListening(false);
       userClickedStop.current = true; 
     }
-  }, [isListening, isPreparingMic, toast, clearPreparingMicTimeout]); // Dependencies for attemptStartListening itself
+  }, [isListening, isPreparingMic, toast, clearPreparingMicTimeout]);
 
   const processTranscription = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
@@ -165,9 +164,8 @@ export default function HapticPage() {
         attemptStartListeningRef.current();
       }
     }
-  }, [toast, isListening, isPreparingMic]); // Dependencies for processTranscription itself
+  }, [toast, isListening, isPreparingMic]); 
   
-  // Update refs for the callbacks
   useEffect(() => { attemptStartListeningRef.current = attemptStartListening; }, [attemptStartListening]);
   useEffect(() => { processTranscriptionRef.current = processTranscription; }, [processTranscription]);
 
@@ -191,14 +189,12 @@ export default function HapticPage() {
     if (isListening || isPreparingMic) {
       stopListening();
     } else {
-      // When manually clicking, reset userClickedStop
       userClickedStop.current = false; 
       attemptStartListeningRef.current();
     }
   }, [isListening, isPreparingMic, stopListening]);
 
 
-  // Main Speech Recognition Setup Effect
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -210,11 +206,15 @@ export default function HapticPage() {
       return;
     }
     
-    if (!speechRecognitionRef.current) { // Only create the instance once
+    if (!speechRecognitionRef.current) { 
         speechRecognitionRef.current = new SpeechRecognitionAPI();
         const recognition = speechRecognitionRef.current!;
         recognition.continuous = true; 
         recognition.interimResults = true;
+        // Set a primary language; the AI prompt handles understanding Kinyarwanda or Kiswahili.
+        // Common tags: 'rw-RW' (Kinyarwanda), 'sw-SW' (Swahili - general), 'sw-KE' (Swahili - Kenya), 'sw-TZ' (Swahili - Tanzania)
+        // Many browsers might default to a broader recognition if a very specific tag isn't supported for STT.
+        // Let's stick with 'rw-RW' as a primary for STT, as the AI part is more flexible.
         recognition.lang = 'rw-RW'; 
 
         recognition.onstart = () => {
@@ -240,7 +240,7 @@ export default function HapticPage() {
 
           if (final.trim()) {
             if (window.speechSynthesis && window.speechSynthesis.speaking) {
-              window.speechSynthesis.cancel(); // Stop TTS if user speaks
+              window.speechSynthesis.cancel(); 
               setIsSpeakingTTS(false);
             }
             setInterimTranscript(''); 
@@ -264,14 +264,14 @@ export default function HapticPage() {
           } else if (event.error === 'network') {
             errorMsg = 'A network error occurred with the speech recognition service. Check your internet connection.';
           } else if (event.error === 'language-not-supported') {
-            errorMsg = 'The selected language (Kinyarwanda) is not supported by your browser/OS speech recognition service.';
+            errorMsg = `The selected language for STT (${recognition.lang}) is not supported by your browser/OS speech recognition service.`;
             criticalError = true;
           } else if (event.error === 'service-not-allowed' || event.error === 'aborted') {
              errorMsg = `Speech recognition service error: ${event.error}. It might be temporary.`;
              if (event.error === 'aborted' && !userClickedStopValRef.current) {
                 // Aborted by service, not user - might not be critical for auto-restart
              } else {
-                criticalError = true; // Treat other aborts or service-not-allowed as needing manual restart
+                criticalError = true; 
              }
           }
           
@@ -300,7 +300,6 @@ export default function HapticPage() {
         setIsMicSetupComplete(true);
     }
     
-    // Cleanup function for component unmount
     return () => {
       console.log("HapticPage cleanup: Main useEffect returning.");
       clearPreparingMicTimeout();
@@ -311,33 +310,26 @@ export default function HapticPage() {
         rec.onerror = null;
         rec.onend = null; 
         try {
-            rec.abort(); // Using abort for a more immediate stop
+            rec.abort(); 
             console.log("Speech recognition instance aborted on component unmount / effect re-run.");
         } catch (e) {
             console.warn("Error aborting recognition on unmount / effect re-run:", e);
         }
-        // speechRecognitionRef.current = null; // Avoid nullifying if other effects depend on it immediately.
-                                            // Let the instance creation logic handle the !speechRecognitionRef.current check.
       }
       if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
       }
     };
-  // Stable dependencies. Setters from useState are stable.
-  // clearPreparingMicTimeout is useCallback([]), toast is from hook.
   }, [clearPreparingMicTimeout, toast]);
 
 
-  // Initial mic start
   useEffect(() => {
     if (isMicSetupComplete && !isListening && !isPreparingMic && !micErrorRef.current && !userClickedStopValRef.current) {
       console.log("Initial mic start useEffect: conditions met, attempting to start listening.");
       attemptStartListeningRef.current(); 
     }
-  // Only run when setup is complete, or if listening/preparing state changes from an external factor (though less likely here)
   }, [isMicSetupComplete, isListening, isPreparingMic]);
 
-  // Audio Visualizer Effect (no changes from previous version assumed needed for this specific fix)
   useEffect(() => {
     const NUM_BARS = 5;
     const processAudioFrame = () => {
@@ -419,16 +411,16 @@ export default function HapticPage() {
     return () => { 
         cleanupAudioVisualizer();
     };
-  }, [isListening, isPreparingMic]); // Removed micError from deps as it uses micErrorRef.current
+  }, [isListening, isPreparingMic]);
 
-  const handleSelectResponse = (option: string) => {
+  const handleSelectResponse = (option: ResponseOption) => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     setInterimTranscript(''); 
     
     if (window.speechSynthesis.speaking) { window.speechSynthesis.cancel(); }
 
-    const utterance = new SpeechSynthesisUtterance(option);
-    utterance.lang = 'rw-RW'; 
+    const utterance = new SpeechSynthesisUtterance(option.text);
+    utterance.lang = option.lang; 
     
     utterance.onstart = () => {
       setIsSpeakingTTS(true);
@@ -439,7 +431,7 @@ export default function HapticPage() {
         const lastTurnIndex = prev.length - 1;
         if (lastTurnIndex >= 0 && prev[lastTurnIndex].userText && !prev[lastTurnIndex].aiResponse) { 
           const updatedConversation = [...prev];
-          updatedConversation[lastTurnIndex] = { ...updatedConversation[lastTurnIndex], aiResponse: option, isProcessingAI: false };
+          updatedConversation[lastTurnIndex] = { ...updatedConversation[lastTurnIndex], aiResponse: option.text, isProcessingAI: false };
           return updatedConversation;
         }
         return prev;
@@ -526,5 +518,3 @@ export default function HapticPage() {
     </div>
   );
 }
-
-    
