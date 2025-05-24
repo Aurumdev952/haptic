@@ -6,6 +6,7 @@ import type { ConversationTurn } from '@/components/haptic/ConversationTurnCard'
 import ConversationView from '@/components/haptic/ConversationView';
 import ResponseOptionsDisplay from '@/components/haptic/ResponseOptionsDisplay';
 import MicrophoneButton from '@/components/haptic/MicrophoneButton';
+import VoiceActivityIndicator from '@/components/haptic/VoiceActivityIndicator';
 import { generateResponseOptions } from '@/ai/flows/generate-response-options';
 import { useToast } from '@/hooks/use-toast';
 import { AlertCircle } from 'lucide-react';
@@ -31,7 +32,7 @@ export default function HapticPage() {
   const [isSpeakingTTS, setIsSpeakingTTS] = useState<boolean>(false);
   
   const [micError, setMicError] = useState<string | null>(null);
-  const [isMicSetupComplete, setIsMicSetupComplete] = useState<boolean>(false); // New state
+  const [isMicSetupComplete, setIsMicSetupComplete] = useState<boolean>(false);
 
   const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
@@ -81,12 +82,10 @@ export default function HapticPage() {
       setIsListening(false);
       setIsPreparingMic(false);
     } else {
-      // Clear previous errors and set preparing state
       setMicError(null);
       setIsPreparingMic(true);
       try {
         speechRecognitionRef.current.start();
-        // onstart will set isListening to true and isPreparingMic to false
       } catch (error) {
         console.error("Error starting recognition:", error);
         const errorMsg = "Failed to start microphone. Please check permissions and hardware.";
@@ -95,7 +94,7 @@ export default function HapticPage() {
         setIsPreparingMic(false);
       }
     }
-  }, [isListening, toast]); // Dependencies: isListening, speechRecognitionRef (implicit via .current), setMicError, toast, setIsPreparingMic
+  }, [isListening, toast]); 
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -103,7 +102,7 @@ export default function HapticPage() {
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionAPI) {
       setMicError("Speech recognition is not supported by your browser. Try Chrome or Edge.");
-      setIsMicSetupComplete(true); // Mark setup as "complete" even if it failed, to allow other logic to proceed.
+      setIsMicSetupComplete(true); 
       return;
     }
     
@@ -112,7 +111,7 @@ export default function HapticPage() {
         const recognition = speechRecognitionRef.current!;
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = 'rw-RW'; // Kinyarwanda. Can be 'sw-SW' for Kiswahili.
+        recognition.lang = 'rw-RW'; 
 
         recognition.onstart = () => {
           setIsListening(true);
@@ -160,17 +159,10 @@ export default function HapticPage() {
         };
 
         recognition.onend = () => {
-          // If recognition stops and it wasn't intentional (e.g. toggleListening was not called to stop it),
-          // update isListening state.
-          // This can happen if speech recognition stops due to an error or prolonged silence.
-          if (isListening && speechRecognitionRef.current) {
-            // Check if stop was manually triggered. If not, it might be an unexpected stop.
-            // For now, direct stop calls handle setIsListening.
-            // This ensures that if it stops for other reasons, isListening is false.
-            // setIsListening(false); // This might be too aggressive, let toggleListening manage it mostly
-          }
+          // Intentionally left blank for now, setIsListening is handled by onstart and toggleListening.
+          // If it stops unexpectedly, isListening might remain true. This can be refined.
         };
-        setIsMicSetupComplete(true); // Mark setup as complete
+        setIsMicSetupComplete(true);
     }
     
     return () => {
@@ -185,10 +177,9 @@ export default function HapticPage() {
         window.speechSynthesis.cancel();
       }
     };
-  }, [processTranscription, toast, isListening]);
+  }, [processTranscription, toast]); // Removed isListening from deps as it caused re-runs
 
 
-  // Effect to auto-start microphone when page loads
   useEffect(() => {
     if (isMicSetupComplete && speechRecognitionRef.current && !isListening && !isPreparingMic && !micError) {
       toggleListening();
@@ -252,10 +243,21 @@ export default function HapticPage() {
         <div ref={conversationEndRef} />
       </main>
 
-      <div className="px-4 md:px-6 pb-2 min-h-[40px] text-center">
-        {isListening && interimTranscript && <p className="italic text-muted-foreground">{interimTranscript}</p>}
-        {isListening && !interimTranscript && !isPreparingMic && <p className="italic text-muted-foreground">Listening...</p>}
+      <div className="px-4 md:px-6 pb-2 min-h-[72px] text-center flex flex-col items-center justify-center">
         {isPreparingMic && <p className="italic text-muted-foreground">Preparing microphone...</p>}
+        
+        {isListening && !isPreparingMic && (
+          <div className="flex flex-col items-center space-y-1">
+            <VoiceActivityIndicator isActive={true} />
+            {interimTranscript ? (
+              <p className="italic text-muted-foreground">{interimTranscript}</p>
+            ) : (
+              <p className="italic text-muted-foreground text-sm">Listening...</p>
+            )}
+          </div>
+        )}
+
+        {!isListening && !isPreparingMic && <div className="h-[52px]" aria-hidden="true"></div>}
       </div>
 
       <footer className="px-4 md:px-6 pb-4 md:pb-6 space-y-4 border-t border-border pt-4 bg-background sticky bottom-0">

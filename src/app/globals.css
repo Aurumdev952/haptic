@@ -107,3 +107,41 @@ body {
     @apply bg-background text-foreground;
   }
 }
+
+@keyframes wave {
+  0%, 100% { height: 0.5rem; } /* 8px */
+  50% { height: 2rem; } /* 32px */
+}
+
+@keyframes wave-short {
+  0%, 100% { height: 0.25rem; } /* 4px */
+  50% { height: 1.5rem; } /* 24px */
+}
+
+.voice-bar {
+  display: inline-block;
+  animation-duration: 1.2s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.voice-bar.bar-1 {
+  animation-name: wave;
+  animation-delay: 0s;
+}
+.voice-bar.bar-2 {
+  animation-name: wave-short;
+  animation-delay: 0.2s;
+}
+.voice-bar.bar-3 {
+  animation-name: wave;
+  animation-delay: 0.4s;
+}
+.voice-bar.bar-4 {
+  animation-name: wave-short;
+  animation-delay: 0.6s;
+}
+.voice-bar.bar-5 {
+  animation-name: wave;
+  animation-delay: 0.8s;
+}
