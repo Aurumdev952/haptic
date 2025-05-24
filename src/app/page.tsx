@@ -17,9 +17,10 @@ declare global {
   interface Window {
     SpeechRecognition: typeof SpeechRecognition | undefined;
     webkitSpeechRecognition: typeof SpeechRecognition | undefined;
+    webkitAudioContext: typeof AudioContext | undefined;
   }
 }
-type SpeechRecognition = any; // Use 'any' for broader compatibility, specific type below if needed
+type SpeechRecognition = any; 
 
 export default function HapticPage() {
   const [conversation, setConversation] = useState<ConversationTurn[]>([]);
@@ -27,7 +28,7 @@ export default function HapticPage() {
   const [responseOptions, setResponseOptions] = useState<string[]>([]);
   
   const [isListening, setIsListening] = useState<boolean>(false);
-  const [isPreparingMic, setIsPreparingMic] = useState<boolean>(false); // For initial mic setup
+  const [isPreparingMic, setIsPreparingMic] = useState<boolean>(false);
   const [isProcessingAI, setIsProcessingAI] = useState<boolean>(false);
   const [isSpeakingTTS, setIsSpeakingTTS] = useState<boolean>(false);
   
@@ -36,14 +37,23 @@ export default function HapticPage() {
 
   const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
-  const conversationEndRef = useRef<HTMLDivElement>(null); // For scrolling
+  const conversationEndRef = useRef<HTMLDivElement>(null);
+
+  // Refs for Web Audio API and visualization
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const audioDataArrayRef = useRef<Uint8Array | null>(null);
+  const animationFrameIdRef = useRef<number | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null); // For the visualizer's stream
+
+  const [voiceActivityData, setVoiceActivityData] = useState<number[]>([0, 0, 0, 0, 0]);
 
   const scrollToBottom = () => {
     conversationEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(scrollToBottom, [conversation, interimTranscript]);
-
 
   const processTranscription = useCallback(async (transcript: string) => {
     if (!transcript.trim()) return;
@@ -79,19 +89,20 @@ export default function HapticPage() {
 
     if (isListening) {
       speechRecognitionRef.current.stop();
-      setIsListening(false);
-      setIsPreparingMic(false);
+      // isListening will be set to false by recognition.onend or an error
     } else {
       setMicError(null);
       setIsPreparingMic(true);
       try {
         speechRecognitionRef.current.start();
+        // isListening will be set to true by recognition.onstart
       } catch (error) {
         console.error("Error starting recognition:", error);
         const errorMsg = "Failed to start microphone. Please check permissions and hardware.";
         setMicError(errorMsg);
         toast({ variant: 'destructive', title: 'Microphone Error', description: errorMsg });
         setIsPreparingMic(false);
+        setIsListening(false); // Ensure state is correct on error
       }
     }
   }, [isListening, toast]); 
@@ -159,8 +170,9 @@ export default function HapticPage() {
         };
 
         recognition.onend = () => {
-          // Intentionally left blank for now, setIsListening is handled by onstart and toggleListening.
-          // If it stops unexpectedly, isListening might remain true. This can be refined.
+          setIsListening(false);
+          setIsPreparingMic(false);
+          // If it stopped unexpectedly, isListening will be false.
         };
         setIsMicSetupComplete(true);
     }
@@ -177,7 +189,7 @@ export default function HapticPage() {
         window.speechSynthesis.cancel();
       }
     };
-  }, [processTranscription, toast]); // Removed isListening from deps as it caused re-runs
+  }, [processTranscription, toast]);
 
 
   useEffect(() => {
@@ -185,6 +197,98 @@ export default function HapticPage() {
       toggleListening();
     }
   }, [isMicSetupComplete, isListening, isPreparingMic, micError, toggleListening]);
+
+  // Effect for Web Audio API based voice visualization
+  useEffect(() => {
+    const NUM_BARS = 5;
+
+    const processAudioFrame = () => {
+      if (analyserRef.current && audioDataArrayRef.current && audioContextRef.current?.state === 'running') {
+        analyserRef.current.getByteFrequencyData(audioDataArrayRef.current);
+        
+        const dataArray = audioDataArrayRef.current;
+        const bufferLength = analyserRef.current.frequencyBinCount;
+        const newBarValues = new Array(NUM_BARS).fill(0);
+        const segmentSize = Math.floor(bufferLength / NUM_BARS);
+
+        for (let i = 0; i < NUM_BARS; i++) {
+          let sum = 0;
+          for (let j = 0; j < segmentSize; j++) {
+            sum += dataArray[i * segmentSize + j];
+          }
+          const average = sum / segmentSize;
+          newBarValues[i] = (average / 255) * 100; 
+        }
+        setVoiceActivityData(newBarValues);
+      }
+      animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
+    };
+
+    const initAudioVisualizer = async () => {
+      if (typeof window === 'undefined' || micError || audioContextRef.current) return;
+
+      try {
+        microphoneStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        const AudioContextAPI = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextAPI) {
+            console.warn("Web Audio API not supported for visualization.");
+            return;
+        }
+        audioContextRef.current = new AudioContextAPI();
+        
+        analyserRef.current = audioContextRef.current.createAnalyser();
+        analyserRef.current.fftSize = 256; // 128 frequency bins
+        
+        mediaStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(microphoneStreamRef.current);
+        mediaStreamSourceRef.current.connect(analyserRef.current);
+        
+        audioDataArrayRef.current = new Uint8Array(analyserRef.current.frequencyBinCount);
+        
+        animationFrameIdRef.current = requestAnimationFrame(processAudioFrame);
+
+      } catch (err) {
+        console.warn('Could not initialize audio visualizer:', err);
+        // Not setting micError here as SpeechRecognition handles primary mic errors.
+        // This is a non-critical feature failing.
+      }
+    };
+
+    const cleanupAudioVisualizer = () => {
+      if (animationFrameIdRef.current) {
+        cancelAnimationFrame(animationFrameIdRef.current);
+        animationFrameIdRef.current = null;
+      }
+      if (mediaStreamSourceRef.current) {
+        mediaStreamSourceRef.current.disconnect();
+        mediaStreamSourceRef.current = null;
+      }
+      if (analyserRef.current) {
+        // analyserRef.current.disconnect(); // Not typically needed if not connected to output
+        analyserRef.current = null;
+      }
+      if (microphoneStreamRef.current) {
+        microphoneStreamRef.current.getTracks().forEach(track => track.stop());
+        microphoneStreamRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(e => console.warn("Error closing visualizer audio context:", e));
+      }
+      audioContextRef.current = null;
+      audioDataArrayRef.current = null;
+      setVoiceActivityData([0, 0, 0, 0, 0]); 
+    };
+
+    if (isListening && !isPreparingMic) {
+      initAudioVisualizer();
+    } else {
+      cleanupAudioVisualizer();
+    }
+
+    return () => {
+      cleanupAudioVisualizer();
+    };
+  }, [isListening, isPreparingMic, micError]);
 
 
   const handleSelectResponse = (option: string) => {
@@ -248,7 +352,7 @@ export default function HapticPage() {
         
         {isListening && !isPreparingMic && (
           <div className="flex flex-col items-center space-y-1">
-            <VoiceActivityIndicator isActive={true} />
+            <VoiceActivityIndicator audioData={voiceActivityData} />
             {interimTranscript ? (
               <p className="italic text-muted-foreground">{interimTranscript}</p>
             ) : (
@@ -272,7 +376,7 @@ export default function HapticPage() {
             isListening={isListening}
             isPreparing={isPreparingMic}
             onClick={toggleListening}
-            disabled={!isMicSetupComplete || (micError !== null && !speechRecognitionRef.current)}
+            disabled={!isMicSetupComplete || (micError !== null && !speechRecognitionRef.current) || isProcessingAI}
           />
         </div>
       </footer>
