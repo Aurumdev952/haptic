@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -30,6 +31,7 @@ export default function HapticPage() {
   const [isSpeakingTTS, setIsSpeakingTTS] = useState<boolean>(false);
   
   const [micError, setMicError] = useState<string | null>(null);
+  const [isMicSetupComplete, setIsMicSetupComplete] = useState<boolean>(false); // New state
 
   const speechRecognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
@@ -67,6 +69,33 @@ export default function HapticPage() {
     }
   }, [toast]);
 
+  const toggleListening = useCallback(() => {
+    if (!speechRecognitionRef.current) {
+      setMicError("Speech recognition is not available.");
+      toast({ variant: 'destructive', title: 'Error', description: 'Speech recognition not available.' });
+      return;
+    }
+
+    if (isListening) {
+      speechRecognitionRef.current.stop();
+      setIsListening(false);
+      setIsPreparingMic(false);
+    } else {
+      // Clear previous errors and set preparing state
+      setMicError(null);
+      setIsPreparingMic(true);
+      try {
+        speechRecognitionRef.current.start();
+        // onstart will set isListening to true and isPreparingMic to false
+      } catch (error) {
+        console.error("Error starting recognition:", error);
+        const errorMsg = "Failed to start microphone. Please check permissions and hardware.";
+        setMicError(errorMsg);
+        toast({ variant: 'destructive', title: 'Microphone Error', description: errorMsg });
+        setIsPreparingMic(false);
+      }
+    }
+  }, [isListening, toast]); // Dependencies: isListening, speechRecognitionRef (implicit via .current), setMicError, toast, setIsPreparingMic
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -74,6 +103,7 @@ export default function HapticPage() {
     const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SpeechRecognitionAPI) {
       setMicError("Speech recognition is not supported by your browser. Try Chrome or Edge.");
+      setIsMicSetupComplete(true); // Mark setup as "complete" even if it failed, to allow other logic to proceed.
       return;
     }
     
@@ -102,7 +132,6 @@ export default function HapticPage() {
           }
           setInterimTranscript(interim);
           if (final.trim()) {
-            // New final transcript means new input, clear previous AI options
             setResponseOptions([]); 
             if (window.speechSynthesis.speaking) {
               window.speechSynthesis.cancel();
@@ -131,72 +160,55 @@ export default function HapticPage() {
         };
 
         recognition.onend = () => {
-          // This might be called if continuous is false or on error.
-          // If we want it to truly stop, we'd set isListening to false.
-          // For continuous mode, it should ideally only stop if we call .stop() or on error.
-          // If it stops unexpectedly, we might want to reflect that in isListening state.
-          // For now, we manage isListening via toggleListening.
-          // If recognition stops and it wasn't intentional, reset state.
-          if (isListening && speechRecognitionRef.current) { 
-             // If it stopped but we thought we were listening (e.g. after some silence in non-continuous mode or some errors)
-             // For continuous mode, this handler is less critical unless an error forces it to end.
+          // If recognition stops and it wasn't intentional (e.g. toggleListening was not called to stop it),
+          // update isListening state.
+          // This can happen if speech recognition stops due to an error or prolonged silence.
+          if (isListening && speechRecognitionRef.current) {
+            // Check if stop was manually triggered. If not, it might be an unexpected stop.
+            // For now, direct stop calls handle setIsListening.
+            // This ensures that if it stops for other reasons, isListening is false.
+            // setIsListening(false); // This might be too aggressive, let toggleListening manage it mostly
           }
         };
+        setIsMicSetupComplete(true); // Mark setup as complete
     }
     
-    // Cleanup function
     return () => {
       if (speechRecognitionRef.current) {
+        speechRecognitionRef.current.onstart = null;
+        speechRecognitionRef.current.onresult = null;
+        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.stop();
       }
       if (window.speechSynthesis && window.speechSynthesis.speaking) {
         window.speechSynthesis.cancel();
       }
     };
-  }, [processTranscription, toast, isListening]); // Added isListening to deps for onend logic robustness
+  }, [processTranscription, toast, isListening]);
 
 
-  const toggleListening = () => {
-    if (!speechRecognitionRef.current) {
-      setMicError("Speech recognition is not available.");
-      toast({ variant: 'destructive', title: 'Error', description: 'Speech recognition not available.' });
-      return;
+  // Effect to auto-start microphone when page loads
+  useEffect(() => {
+    if (isMicSetupComplete && speechRecognitionRef.current && !isListening && !isPreparingMic && !micError) {
+      toggleListening();
     }
+  }, [isMicSetupComplete, isListening, isPreparingMic, micError, toggleListening]);
 
-    if (isListening) {
-      speechRecognitionRef.current.stop();
-      setIsListening(false);
-      setIsPreparingMic(false);
-    } else {
-      // Clear previous errors and set preparing state
-      setMicError(null);
-      setIsPreparingMic(true);
-      try {
-        speechRecognitionRef.current.start();
-        // onstart will set isListening to true and isPreparingMic to false
-      } catch (error) {
-        console.error("Error starting recognition:", error);
-        setMicError("Failed to start microphone. Please check permissions and hardware.");
-        toast({ variant: 'destructive', title: 'Microphone Error', description: "Failed to start microphone." });
-        setIsPreparingMic(false);
-      }
-    }
-  };
 
   const handleSelectResponse = (option: string) => {
     if (isSpeakingTTS || typeof window === 'undefined' || !window.speechSynthesis) return;
 
-    setInterimTranscript(''); // Clear interim transcript as we are now speaking
+    setInterimTranscript('');
     
     const utterance = new SpeechSynthesisUtterance(option);
-    utterance.lang = 'rw-RW'; // Match the expected language of responses
+    utterance.lang = 'rw-RW'; 
     
     utterance.onstart = () => {
       setIsSpeakingTTS(true);
     };
     utterance.onend = () => {
       setIsSpeakingTTS(false);
-      // Update conversation with AI response
       setConversation(prev => {
         const lastTurnIndex = prev.length - 1;
         if (lastTurnIndex >= 0 && !prev[lastTurnIndex].aiResponse) {
@@ -204,7 +216,7 @@ export default function HapticPage() {
           updatedConversation[lastTurnIndex] = { ...updatedConversation[lastTurnIndex], aiResponse: option, isProcessingAI: false };
           return updatedConversation;
         }
-        return prev; // Should not happen if flow is correct
+        return prev;
       });
     };
     utterance.onerror = (event) => {
@@ -237,7 +249,7 @@ export default function HapticPage() {
 
       <main className="flex-grow overflow-y-auto p-4 md:p-6">
         <ConversationView conversation={conversation} />
-        <div ref={conversationEndRef} /> {/* For scrolling to bottom */}
+        <div ref={conversationEndRef} />
       </main>
 
       <div className="px-4 md:px-6 pb-2 min-h-[40px] text-center">
@@ -258,7 +270,7 @@ export default function HapticPage() {
             isListening={isListening}
             isPreparing={isPreparingMic}
             onClick={toggleListening}
-            disabled={micError !== null && !speechRecognitionRef.current} // Disable if fundamental error
+            disabled={!isMicSetupComplete || (micError !== null && !speechRecognitionRef.current)}
           />
         </div>
       </footer>
