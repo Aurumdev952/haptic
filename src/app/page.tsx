@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { ConversationTurn } from "@/components/haptic/ConversationTurnCard";
-import ConversationView from "@/components/haptic/ConversationView";
+// import ConversationView from "@/components/haptic/ConversationView"; // Not used in the provided snippet
 import ResponseOptionsDisplay, {
   type ResponseOption,
 } from "@/components/haptic/ResponseOptionsDisplay";
@@ -10,8 +10,8 @@ import MicrophoneButton from "@/components/haptic/MicrophoneButton";
 import VoiceActivityIndicator from "@/components/haptic/VoiceActivityIndicator";
 import { generateResponseOptions } from "@/ai/flows/generate-response-options";
 import { useToast } from "@/hooks/use-toast";
-import { AlertCircle } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+// import { AlertCircle } from "lucide-react"; // Not used directly in the provided snippet's render
+// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Not used directly in the provided snippet's render
 import CircularGradient from "@/components/CircularGradient";
 import Image from "next/image";
 import { HapticLogo } from "@/assets/assetsExporter";
@@ -29,14 +29,15 @@ declare global {
     resultIndex: number;
   }
   interface SpeechRecognitionErrorEvent extends Event {
-    // Changed from ErrorEvent
-    error: string; // Standard property name for speech recognition errors
+    error: string;
     message: string;
   }
 }
 type SpeechRecognition = any;
 
 const PREPARING_TIMEOUT_DURATION = 10000; // 10 seconds
+const OPENAI_TTS_MODEL = "gpt-4o-mini-tts"; // As per your curl example
+const OPENAI_TTS_VOICE = "alloy"; // As per your curl example
 
 export default function HapticPage() {
   const [conversation, setConversation] = useState<ConversationTurn[]>([]);
@@ -67,6 +68,11 @@ export default function HapticPage() {
   const [voiceActivityData, setVoiceActivityData] = useState<number[]>([
     0, 0, 0, 0, 0,
   ]);
+
+  // Refs for OpenAI TTS
+  const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioUrlRef = useRef<string | null>(null);
+
 
   const scrollToBottom = () => {
     conversationEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -227,7 +233,7 @@ export default function HapticPage() {
         }
       }
     },
-    [toast, isListening, isPreparingMic]
+    [toast, isListening, isPreparingMic] // Removed attemptStartListeningRef from dependencies as it's stable via its own effect
   );
 
   useEffect(() => {
@@ -261,7 +267,27 @@ export default function HapticPage() {
       userClickedStop.current = false;
       attemptStartListeningRef.current();
     }
-  }, [isListening, isPreparingMic, stopListening]);
+  }, [isListening, isPreparingMic, stopListening]); // Removed attemptStartListeningRef
+
+  const stopCurrentTTS = () => {
+    if (audioPlayerRef.current && !audioPlayerRef.current.paused) {
+      audioPlayerRef.current.pause();
+      audioPlayerRef.current.currentTime = 0; // Reset time
+      // Detach event handlers to prevent them from firing on manual stop
+      audioPlayerRef.current.onended = null;
+      audioPlayerRef.current.onerror = null;
+      if (currentAudioUrlRef.current) {
+        URL.revokeObjectURL(currentAudioUrlRef.current);
+        currentAudioUrlRef.current = null;
+      }
+      console.log("OpenAI TTS stopped.");
+    }
+    // Ensure state is consistent
+    if (isSpeakingTTS) {
+      setIsSpeakingTTS(false);
+    }
+  };
+
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -282,11 +308,7 @@ export default function HapticPage() {
       const recognition = speechRecognitionRef.current!;
       recognition.continuous = true;
       recognition.interimResults = true;
-      // Set a primary language; the AI prompt handles understanding Kinyarwanda or Kiswahili.
-      // Common tags: 'rw-RW' (Kinyarwanda), 'sw-SW' (Swahili - general), 'sw-KE' (Swahili - Kenya), 'sw-TZ' (Swahili - Tanzania)
-      // Many browsers might default to a broader recognition if a very specific tag isn't supported for STT.
-      // Let's stick with 'rw-RW' as a primary for STT, as the AI part is more flexible.
-      recognition.lang = "rw-RW";
+      recognition.lang = "rw-RW"; // Or your desired STT language
 
       recognition.onstart = () => {
         console.log("Recognition.onstart fired");
@@ -310,10 +332,8 @@ export default function HapticPage() {
         setInterimTranscript(interim);
 
         if (final.trim()) {
-          if (window.speechSynthesis && window.speechSynthesis.speaking) {
-            window.speechSynthesis.cancel();
-            setIsSpeakingTTS(false);
-          }
+          // If new speech is detected while OpenAI TTS is playing, stop it.
+          stopCurrentTTS();
           processTranscriptionRef.current(final.trim());
         }
       };
@@ -376,13 +396,13 @@ export default function HapticPage() {
         setIsListening(false);
         setIsPreparingMic(false);
 
-        if (!userClickedStopValRef.current && !micErrorRef.current) {
+        if (!userClickedStopValRef.current && !micErrorRef.current && !isSpeakingTTS) { // Added !isSpeakingTTS check
           console.log(
             "Recognition.onend: Conditions met, attempting to restart listening."
           );
           attemptStartListeningRef.current();
         } else {
-          console.log("Recognition.onend: Conditions NOT met for restart.");
+          console.log("Recognition.onend: Conditions NOT met for restart (user stop, mic error, or TTS active).");
         }
       };
       setIsMicSetupComplete(true);
@@ -409,11 +429,13 @@ export default function HapticPage() {
           );
         }
       }
-      if (window.speechSynthesis && window.speechSynthesis.speaking) {
-        window.speechSynthesis.cancel();
+      // Cleanup OpenAI TTS audio player
+      stopCurrentTTS();
+      if (audioPlayerRef.current) {
+        audioPlayerRef.current = null; // Release the audio element
       }
     };
-  }, [clearPreparingMicTimeout, toast]);
+  }, [clearPreparingMicTimeout, toast, isSpeakingTTS]); // Added isSpeakingTTS as it affects onend logic
 
   useEffect(() => {
     if (
@@ -421,14 +443,16 @@ export default function HapticPage() {
       !isListening &&
       !isPreparingMic &&
       !micErrorRef.current &&
-      !userClickedStopValRef.current
+      !userClickedStopValRef.current &&
+      !isSpeakingTTS // Don't auto-start if TTS is about to play or playing
     ) {
       console.log(
         "Initial mic start useEffect: conditions met, attempting to start listening."
       );
       attemptStartListeningRef.current();
     }
-  }, [isMicSetupComplete, isListening, isPreparingMic]);
+  }, [isMicSetupComplete, isListening, isPreparingMic, isSpeakingTTS]); // Added isSpeakingTTS
+
 
   useEffect(() => {
     const NUM_BARS = 5;
@@ -557,71 +581,145 @@ export default function HapticPage() {
     };
   }, [isListening, isPreparingMic]);
 
-  const handleSelectResponse = (option: ResponseOption) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const handleSelectResponse = async (option: ResponseOption) => {
+    if (typeof window === "undefined") return;
     setInterimTranscript("");
+    stopCurrentTTS(); // Stop any currently playing TTS
 
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-    }
+    setIsSpeakingTTS(true);
 
-    const utterance = new SpeechSynthesisUtterance(option.text);
-    utterance.lang = option.lang;
-
-    utterance.onstart = () => {
-      setIsSpeakingTTS(true);
-    };
-    utterance.onend = () => {
-      setIsSpeakingTTS(false);
-      setConversation((prev) => {
-        const lastTurnIndex = prev.length - 1;
-        if (
-          lastTurnIndex >= 0 &&
-          prev[lastTurnIndex].userText &&
-          !prev[lastTurnIndex].aiResponse
-        ) {
-          const updatedConversation = [...prev];
-          updatedConversation[lastTurnIndex] = {
-            ...updatedConversation[lastTurnIndex],
-            aiResponse: option.text,
-            isProcessingAI: false,
-          };
-          return updatedConversation;
-        }
-        return prev;
-      });
-      if (
-        speechRecognitionRef.current &&
-        !userClickedStopValRef.current &&
-        !micErrorRef.current &&
-        !isListening &&
-        !isPreparingMic
-      ) {
-        console.log("TTS onend: Attempting to restart listening.");
-        attemptStartListeningRef.current();
-      }
-    };
-    utterance.onerror = (event) => {
-      console.error("Speech synthesis error:", event);
+    const apiKey = process.env.NEXT_PUBLIC_OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error("OpenAI API key not found.");
       toast({
         variant: "destructive",
-        title: "TTS Error",
-        description: "Could not speak the response.",
+        title: "TTS Configuration Error",
+        description: "OpenAI API key is missing.",
       });
       setIsSpeakingTTS(false);
-      if (
-        speechRecognitionRef.current &&
-        !userClickedStopValRef.current &&
-        !micErrorRef.current &&
-        !isListening &&
-        !isPreparingMic
-      ) {
-        console.log("TTS onerror: Attempting to restart listening.");
+      // Attempt to restart listening even on config error
+      if (!userClickedStopValRef.current && !micErrorRef.current && !isListening && !isPreparingMic) {
         attemptStartListeningRef.current();
       }
-    };
-    window.speechSynthesis.speak(utterance);
+      return;
+    }
+
+    try {
+      const response = await fetch("https://api.openai.com/v1/audio/speech", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: OPENAI_TTS_MODEL,
+          input: option.text,
+          voice: OPENAI_TTS_VOICE,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("OpenAI TTS API error:", response.status, errorData);
+        throw new Error(
+          `Failed to generate speech: ${response.statusText} ${errorData.error?.message || ""}`
+        );
+      }
+
+      const audioBlob = await response.blob();
+
+      if (!audioPlayerRef.current) {
+        audioPlayerRef.current = new Audio();
+      }
+
+      if (currentAudioUrlRef.current) {
+        URL.revokeObjectURL(currentAudioUrlRef.current); // Clean up previous URL
+      }
+
+      currentAudioUrlRef.current = URL.createObjectURL(audioBlob);
+      audioPlayerRef.current.src = currentAudioUrlRef.current;
+
+      audioPlayerRef.current.onended = () => {
+        console.log("OpenAI TTS finished playing.");
+        setIsSpeakingTTS(false);
+        if (currentAudioUrlRef.current) {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+          currentAudioUrlRef.current = null;
+        }
+        setConversation((prev) => {
+          const lastTurnIndex = prev.length - 1;
+          if (
+            lastTurnIndex >= 0 &&
+            prev[lastTurnIndex].userText &&
+            !prev[lastTurnIndex].aiResponse
+          ) {
+            const updatedConversation = [...prev];
+            updatedConversation[lastTurnIndex] = {
+              ...updatedConversation[lastTurnIndex],
+              aiResponse: option.text,
+              isProcessingAI: false,
+            };
+            return updatedConversation;
+          }
+          return prev;
+        });
+        if (!userClickedStopValRef.current && !micErrorRef.current && !isListening && !isPreparingMic) {
+          console.log("TTS onended: Attempting to restart listening.");
+          attemptStartListeningRef.current();
+        }
+      };
+
+      audioPlayerRef.current.onerror = (e) => {
+        console.error("Error playing OpenAI TTS audio:", e);
+        toast({
+          variant: "destructive",
+          title: "TTS Playback Error",
+          description: "Could not play the audio response.",
+        });
+        setIsSpeakingTTS(false);
+        if (currentAudioUrlRef.current) {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+          currentAudioUrlRef.current = null;
+        }
+        if (!userClickedStopValRef.current && !micErrorRef.current && !isListening && !isPreparingMic) {
+          console.log("TTS onerror (playback): Attempting to restart listening.");
+          attemptStartListeningRef.current();
+        }
+      };
+
+      audioPlayerRef.current.play().catch(err => {
+        // This catch is for the play() promise itself, e.g. if user hasn't interacted with the page.
+        console.error("Error calling play() on audio element:", err);
+        toast({
+          variant: "destructive",
+          title: "TTS Playback Error",
+          description: `Could not start audio playback: ${err.message}. Try interacting with the page first.`,
+        });
+        setIsSpeakingTTS(false);
+        if (currentAudioUrlRef.current) {
+          URL.revokeObjectURL(currentAudioUrlRef.current);
+          currentAudioUrlRef.current = null;
+        }
+        if (!userClickedStopValRef.current && !micErrorRef.current && !isListening && !isPreparingMic) {
+          attemptStartListeningRef.current();
+        }
+      });
+
+    } catch (error: any) {
+      console.error("Error in handleSelectResponse with OpenAI TTS:", error);
+      toast({
+        variant: "destructive",
+        title: "TTS API Error",
+        description: error.message || "Could not generate or play the speech.",
+      });
+      setIsSpeakingTTS(false);
+      if (!userClickedStopValRef.current && !micErrorRef.current && !isListening && !isPreparingMic) {
+        console.log("TTS onerror (API): Attempting to restart listening.");
+        attemptStartListeningRef.current();
+      }
+    }
   };
+
 
   return (
     <div className="flex flex-col h-screen bg-[#1B1B1C] relative">
@@ -634,7 +732,8 @@ export default function HapticPage() {
         />
       </header>
 
-      {/* {micError && (
+      {/* Error display can be uncommented if desired
+      {micError && (
          <div className="p-4">
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -653,7 +752,7 @@ export default function HapticPage() {
           </div>
         )}
 
-        {(isListening || interimTranscript) && (
+        {(isListening || interimTranscript) && !isPreparingMic && (
           <div className={`bg-[#10141680] px-[20px] py-[15px] rounded-full`}>
             {interimTranscript ? (
               <p className="font-[400] text-[25px] text-[#FFFFFF99]">
@@ -669,16 +768,26 @@ export default function HapticPage() {
 
         {!isListening && !isPreparingMic && interimTranscript && (
           <div className="flex flex-col items-center space-y-1">
+            {/* This VoiceActivityIndicator might need adjustment as it uses a different mic stream */}
             <VoiceActivityIndicator audioData={[0, 0, 0, 0, 0]} />
             <p className="italic text-muted-foreground">{interimTranscript}</p>
           </div>
         )}
+        {/* Placeholder for spacing if none of the above are shown */}
         {!isPreparingMic &&
-          !(isListening && !isPreparingMic) &&
+          !((isListening || interimTranscript) && !isPreparingMic) &&
           !(!isListening && !isPreparingMic && interimTranscript) && (
             <div className="h-[52px]" aria-hidden="true"></div>
           )}
       </div>
+
+      {/* Conversation View (hidden in provided snippet, assuming it's elsewhere or removed) */}
+      {/* This div is for scrolling, you might need to integrate ConversationView here */}
+      <div ref={conversationEndRef} className="flex-grow overflow-y-auto">
+        {/* Example: Render conversation turns if you have them */}
+        {/* {conversation.map(turn => <ConversationTurnCard key={turn.id} turn={turn} />)} */}
+      </div>
+
 
       <main className="flex h-full overflow-y-auto p-4 md:p-6 z-[20]">
         <ResponseOptionsDisplay
@@ -686,7 +795,7 @@ export default function HapticPage() {
           isLoading={isProcessingAI}
           onSelect={handleSelectResponse}
           disabled={
-            isPreparingMic || responseOptions.length === 0 || isProcessingAI
+            isPreparingMic || responseOptions.length === 0 || isProcessingAI || isSpeakingTTS // Added isSpeakingTTS
           }
         />
       </main>
