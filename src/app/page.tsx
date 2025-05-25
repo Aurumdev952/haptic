@@ -800,7 +800,7 @@ export default function HapticPage() {
         />
       </main>
 
-      <footer className="px-4 md:px-6 pb-4 md:pb-6 space-y-4 bg-[#1B1B1C] sticky bottom-0">
+      {/* <footer className="px-4 md:px-6 pb-4 md:pb-6 space-y-4 bg-[#1B1B1C] sticky bottom-0">
         <div className="flex justify-center">
           <MicrophoneButton
             isListening={isListening}
@@ -818,7 +818,7 @@ export default function HapticPage() {
             }
           />
         </div>
-      </footer>
+      </footer> */}
 
       <div
         className={`absolute top-[-20rem] left-0 right-0 flex items-center justify-center z-[10]`}
