@@ -12,8 +12,6 @@ interface MicrophoneButtonProps {
 const MicrophoneButton: FC<MicrophoneButtonProps> = ({ isListening, isPreparing, onClick, disabled }) => {
   return (
     <Button
-      variant="default"
-      size="icon"
       className="w-16 h-16 rounded-full text-2xl shadow-lg bg-primary hover:bg-primary/90 data-[active=true]:bg-destructive data-[active=true]:hover:bg-destructive/90 transition-all duration-150 ease-in-out"
       onClick={onClick}
       disabled={disabled || isPreparing}

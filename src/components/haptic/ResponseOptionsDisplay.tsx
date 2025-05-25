@@ -1,8 +1,7 @@
-
-import type { FC } from 'react';
-import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Send } from 'lucide-react';
+import type { FC } from "react";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Send } from "lucide-react";
 
 export interface ResponseOption {
   text: string;
@@ -16,10 +15,15 @@ interface ResponseOptionsDisplayProps {
   disabled: boolean;
 }
 
-const ResponseOptionsDisplay: FC<ResponseOptionsDisplayProps> = ({ options, isLoading, onSelect, disabled }) => {
+const ResponseOptionsDisplay: FC<ResponseOptionsDisplayProps> = ({
+  options,
+  isLoading,
+  onSelect,
+  disabled,
+}) => {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+      <div className="w-full flex flex-col items-center justify-center gap-[20px]">
         {[...Array(3)].map((_, i) => (
           <Skeleton key={i} className="h-16 w-full rounded-lg" />
         ))}
@@ -32,20 +36,22 @@ const ResponseOptionsDisplay: FC<ResponseOptionsDisplayProps> = ({ options, isLo
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-4">
+    <div
+      className={`w-full flex flex-col items-center justify-center gap-[20px]`}
+    >
       {options.map((option, index) => (
-        <Button
+        <button
           key={index}
-          variant="outline"
-          size="lg"
-          className="h-auto min-h-16 py-3 text-sm sm:text-base whitespace-normal text-left justify-start bg-card hover:bg-accent hover:text-accent-foreground focus-visible:ring-accent shadow-sm border-accent border-opacity-50 group"
+          className="bg-[#10141680] px-[20px] py-[15px] rounded-full hover:bg-[#FD5E42] hover:py-[25px] hover:px-[25px] cursor-pointer"
           onClick={() => onSelect(option)}
           disabled={disabled}
+          style={{ transition: "0.5s ease-out" }}
           aria-label={`Select response: ${option.text}`}
         >
-          <Send size={18} className="mr-2 flex-shrink-0 text-accent group-hover:text-accent-foreground" />
-          {option.text}
-        </Button>
+          <p className={`font-[400] text-[25px] text-[#FFFFFF99]`}>
+            {option.text}
+          </p>
+        </button>
       ))}
     </div>
   );

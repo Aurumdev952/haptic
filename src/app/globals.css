@@ -108,3 +108,372 @@ body {
   }
 }
 /* Removed keyframes wave, wave-short and voice-bar animation properties as it's now JS driven */
+
+::-webkit-scrollbar {
+  display: none;
+}
+
+/* Water Drop Container */
+.water_drop_container {
+  position: relative;
+  width: 600px;
+  height: 660px;
+  filter: blur(120px) saturate(1.5);
+  animation: containerFloat 8s ease-in-out infinite;
+}
+
+/* Main water drop shape */
+.water_drop_main {
+  position: absolute;
+  width: 540px;
+  height: 410px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  
+  /* Water drop shape using border-radius */
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  
+  background: 
+    radial-gradient(ellipse at 30% 20%, #FC4A26 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 80%, #F88E1E 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, #FC4A26 20%, #F88E1E 80%);
+  
+  box-shadow: 
+    inset 0 0 50px rgba(252, 74, 38, 0.4),
+    0 0 80px rgba(252, 74, 38, 0.6),
+    0 0 160px rgba(248, 142, 30, 0.4),
+    0 0 240px rgba(252, 74, 38, 0.2);
+    
+  animation: 
+    waterDropMorph 6s ease-in-out infinite,
+    colorShiftMain 4s linear infinite,
+    breathe 3s ease-in-out infinite;
+}
+
+/* Secondary layer for depth */
+.water_drop_secondary {
+  position: absolute;
+  width: 360px;
+  height: 320px;
+  top: 45%;
+  left: 55%;
+  transform: translate(-50%, -50%);
+  
+  border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%;
+  
+  background: 
+    radial-gradient(ellipse at 60% 30%, #F88E1E 0%, transparent 60%),
+    radial-gradient(ellipse at 20% 70%, #FC4A26 0%, transparent 60%);
+    
+  opacity: 0.7;
+  animation: 
+    waterDropMorphSecondary 7s ease-in-out infinite reverse,
+    colorShiftSecondary 5s linear infinite reverse,
+    drift 10s ease-in-out infinite;
+}
+
+/* Tertiary layer for extra complexity */
+.water_drop_tertiary {
+  position: absolute;
+  width: 310px;
+  height: 260px;
+  top: 55%;
+  left: 45%;
+  transform: translate(-50%, -50%);
+  
+  border-radius: 40% 60% 70% 30% / 80% 50% 50% 80%;
+  
+  background: 
+    linear-gradient(45deg, #FC4A26 0%, transparent 50%),
+    radial-gradient(circle at 70% 30%, #F88E1E 0%, transparent 40%);
+    
+  opacity: 0.5;
+  animation: 
+    liquidFlow 9s ease-in-out infinite,
+    colorPulse 3s ease-in-out infinite,
+    rotate 15s linear infinite;
+}
+
+/* Floating particles around the drop */
+.floating_particles {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.particle {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, #FC4A26 0%, transparent 70%);
+  animation: particleFloat 4s ease-in-out infinite;
+}
+
+.particle-1 {
+  width: 8px;
+  height: 8px;
+  top: 20%;
+  left: 15%;
+  animation-delay: 0s;
+  animation-duration: 6s;
+}
+
+.particle-2 {
+  width: 12px;
+  height: 12px;
+  top: 70%;
+  right: 20%;
+  background: radial-gradient(circle, #F88E1E 0%, transparent 70%);
+  animation-delay: 1.5s;
+  animation-duration: 8s;
+}
+
+.particle-3 {
+  width: 6px;
+  height: 6px;
+  top: 40%;
+  left: 80%;
+  animation-delay: 3s;
+  animation-duration: 5s;
+}
+
+.particle-4 {
+  width: 10px;
+  height: 10px;
+  bottom: 30%;
+  left: 10%;
+  background: radial-gradient(circle, #F88E1E 0%, transparent 70%);
+  animation-delay: 2s;
+  animation-duration: 7s;
+}
+
+.particle-5 {
+  width: 14px;
+  height: 14px;
+  top: 10%;
+  right: 30%;
+  animation-delay: 4s;
+  animation-duration: 9s;
+}
+
+/* Sound wave effects */
+.sound_wave_active .water_drop_main {
+  animation: 
+    waterDropMorph 6s ease-in-out infinite,
+    colorShiftMain 4s linear infinite,
+    breathe 3s ease-in-out infinite,
+    soundReaction 0.3s ease-in-out infinite;
+}
+
+.sound_wave_active .water_drop_secondary {
+  animation: 
+    waterDropMorphSecondary 7s ease-in-out infinite reverse,
+    colorShiftSecondary 5s linear infinite reverse,
+    drift 10s ease-in-out infinite,
+    soundReactionSecondary 0.4s ease-in-out infinite;
+}
+
+.sound_wave_active .water_drop_tertiary {
+  animation: 
+    liquidFlow 9s ease-in-out infinite,
+    colorPulse 3s ease-in-out infinite,
+    rotate 15s linear infinite,
+    soundReactionTertiary 0.2s ease-in-out infinite;
+}
+
+.sound_wave_active .particle {
+  animation: 
+    particleFloat 4s ease-in-out infinite,
+    particleBounce 0.6s ease-in-out infinite;
+}
+
+/* Keyframe Animations */
+@keyframes containerFloat {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  25% { transform: translateY(-10px) rotate(1deg); }
+  50% { transform: translateY(-5px) rotate(0deg); }
+  75% { transform: translateY(-15px) rotate(-1deg); }
+}
+
+@keyframes waterDropMorph {
+  0% { 
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  25% { 
+    border-radius: 40% 60% 60% 40% / 70% 50% 50% 70%;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  50% { 
+    border-radius: 60% 40% 40% 60% / 50% 70% 70% 50%;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  75% { 
+    border-radius: 50% 50% 50% 50% / 80% 40% 60% 80%;
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+  100% { 
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes waterDropMorphSecondary {
+  0% { 
+    border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%;
+    transform: translate(-50%, -50%) scale(1) skew(0deg);
+  }
+  33% { 
+    border-radius: 30% 70% 70% 30% / 60% 80% 20% 60%;
+    transform: translate(-50%, -50%) scale(1.1) skew(2deg);
+  }
+  66% { 
+    border-radius: 70% 30% 30% 70% / 80% 40% 60% 80%;
+    transform: translate(-50%, -50%) scale(0.9) skew(-2deg);
+  }
+  100% { 
+    border-radius: 50% 50% 50% 50% / 70% 70% 30% 30%;
+    transform: translate(-50%, -50%) scale(1) skew(0deg);
+  }
+}
+
+@keyframes liquidFlow {
+  0% { 
+    border-radius: 40% 60% 70% 30% / 80% 50% 50% 80%;
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  }
+  20% { 
+    border-radius: 60% 40% 30% 70% / 50% 80% 80% 50%;
+    transform: translate(-50%, -50%) scale(1.15) rotate(72deg);
+  }
+  40% { 
+    border-radius: 30% 70% 60% 40% / 70% 30% 70% 30%;
+    transform: translate(-50%, -50%) scale(0.85) rotate(144deg);
+  }
+  60% { 
+    border-radius: 70% 30% 40% 60% / 40% 70% 30% 70%;
+    transform: translate(-50%, -50%) scale(1.05) rotate(216deg);
+  }
+  80% { 
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: translate(-50%, -50%) scale(0.95) rotate(288deg);
+  }
+  100% { 
+    border-radius: 40% 60% 70% 30% / 80% 50% 50% 80%;
+    transform: translate(-50%, -50%) scale(1) rotate(360deg);
+  }
+}
+
+@keyframes colorShiftMain {
+  0% { 
+    background: 
+      radial-gradient(ellipse at 30% 20%, #FC4A26 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 80%, #F88E1E 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, #FC4A26 20%, #F88E1E 80%);
+  }
+  25% { 
+    background: 
+      radial-gradient(ellipse at 70% 30%, #F88E1E 0%, transparent 50%),
+      radial-gradient(ellipse at 30% 70%, #FC4A26 0%, transparent 50%),
+      radial-gradient(ellipse at 60% 40%, #F88E1E 20%, #FC4A26 80%);
+  }
+  50% { 
+    background: 
+      radial-gradient(ellipse at 50% 80%, #FC4A26 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 20%, #F88E1E 0%, transparent 50%),
+      radial-gradient(ellipse at 40% 60%, #FC4A26 30%, #F88E1E 70%);
+  }
+  75% { 
+    background: 
+      radial-gradient(ellipse at 20% 60%, #F88E1E 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 40%, #FC4A26 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 30%, #F88E1E 25%, #FC4A26 75%);
+  }
+  100% { 
+    background: 
+      radial-gradient(ellipse at 30% 20%, #FC4A26 0%, transparent 50%),
+      radial-gradient(ellipse at 70% 80%, #F88E1E 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, #FC4A26 20%, #F88E1E 80%);
+  }
+}
+
+@keyframes colorShiftSecondary {
+  0% { 
+    background: 
+      radial-gradient(ellipse at 60% 30%, #F88E1E 0%, transparent 60%),
+      radial-gradient(ellipse at 20% 70%, #FC4A26 0%, transparent 60%);
+  }
+  50% { 
+    background: 
+      radial-gradient(ellipse at 40% 70%, #FC4A26 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 30%, #F88E1E 0%, transparent 60%);
+  }
+  100% { 
+    background: 
+      radial-gradient(ellipse at 60% 30%, #F88E1E 0%, transparent 60%),
+      radial-gradient(ellipse at 20% 70%, #FC4A26 0%, transparent 60%);
+  }
+}
+
+@keyframes breathe {
+  0%, 100% { 
+    box-shadow: 
+      inset 0 0 50px rgba(252, 74, 38, 0.4),
+      0 0 80px rgba(252, 74, 38, 0.6),
+      0 0 160px rgba(248, 142, 30, 0.4),
+      0 0 240px rgba(252, 74, 38, 0.2);
+  }
+  50% { 
+    box-shadow: 
+      inset 0 0 80px rgba(248, 142, 30, 0.6),
+      0 0 120px rgba(248, 142, 30, 0.8),
+      0 0 200px rgba(252, 74, 38, 0.6),
+      0 0 320px rgba(248, 142, 30, 0.3);
+  }
+}
+
+@keyframes drift {
+  0%, 100% { transform: translate(-50%, -50%) translateX(0px) translateY(0px); }
+  25% { transform: translate(-50%, -50%) translateX(8px) translateY(-5px); }
+  50% { transform: translate(-50%, -50%) translateX(-3px) translateY(8px); }
+  75% { transform: translate(-50%, -50%) translateX(-8px) translateY(-3px); }
+}
+
+@keyframes colorPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes rotate {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes particleFloat {
+  0%, 100% { transform: translateY(0px) scale(1); opacity: 0.6; }
+  25% { transform: translateY(-20px) scale(1.2); opacity: 1; }
+  50% { transform: translateY(-10px) scale(0.8); opacity: 0.4; }
+  75% { transform: translateY(-30px) scale(1.1); opacity: 0.8; }
+}
+
+/* Sound wave specific animations */
+@keyframes soundReaction {
+  0%, 100% { transform: translate(-50%, -50%) scale(0.9); }
+  50% { transform: translate(-50%, -50%) scale(1.08); }
+}
+
+@keyframes soundReactionSecondary {
+  0%, 100% { transform: translate(-50%, -50%) scale(1) skew(0deg); }
+  50% { transform: translate(-50%, -50%) scale(1.12) skew(1deg); }
+}
+
+@keyframes soundReactionTertiary {
+  0%, 100% { transform: translate(-50%, -50%) scale(1) rotate(0deg); }
+  50% { transform: translate(-50%, -50%) scale(1.15) rotate(5deg); }
+}
+
+@keyframes particleBounce {
+  0%, 100% { transform: translateY(0px) scale(1); }
+  50% { transform: translateY(-8px) scale(1.3); }
+}
